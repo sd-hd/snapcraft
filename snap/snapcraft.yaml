@@ -103,8 +103,8 @@ parts:
 
   legacy-snapcraft:
     plugin: python
-    source: https://github.com/snapcore/snapcraft.git
-    source-branch: legacy
+    source: https://github.com/sd-hd/snapcraft.git
+    source-branch: sdhd-devel
     source-depth: 1
     requirements:
         - requirements.txt
