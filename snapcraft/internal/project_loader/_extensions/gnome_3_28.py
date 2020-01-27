@@ -55,12 +55,12 @@ class ExtensionImpl(Extension):
 
     @staticmethod
     def get_supported_confinement() -> Tuple[str, ...]:
-        return ("strict", "devmode")
+        return ("strict", "devmode", 'classic')
 
     def __init__(self, *, extension_name: str, yaml_data: Dict[str, Any]) -> None:
         super().__init__(extension_name=extension_name, yaml_data=yaml_data)
 
-        platform_snap = _PLATFORM_SNAP[yaml_data.get("base")]
+        # platform_snap = _PLATFORM_SNAP[yaml_data.get("base")]
         self.root_snippet = {
             "plugs": {
                 "gtk-3-themes": {
@@ -78,11 +78,11 @@ class ExtensionImpl(Extension):
                     "target": "$SNAP/data-dir/sounds",
                     "default-provider": "gtk-common-themes",
                 },
-                platform_snap: {
-                    "interface": "content",
-                    "target": "$SNAP/gnome-platform",
-                    "default-provider": "{snap}".format(snap=platform_snap),
-                },
+                # platform_snap: {
+                #     "interface": "content",
+                #     "target": "$SNAP/gnome-platform",
+                #     "default-provider": "{snap}".format(snap=platform_snap),
+                # },
             },
             "environment": {"SNAP_DESKTOP_RUNTIME": "$SNAP/gnome-platform"},
             "layout": {
