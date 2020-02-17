@@ -24,6 +24,7 @@ import tempfile
 from typing import Dict, FrozenSet, List, Optional, Set, Sequence, Tuple, Union
 
 import elftools.elf.elffile
+from elftools.construct import ConstructError
 import elftools.common.exceptions
 from pkg_resources import parse_version
 
@@ -196,11 +197,17 @@ class Library:
         self.soname_cache[self.arch, self.soname] = resolved_path
 
     def _is_valid_elf(self, resolved_path: str) -> bool:
-        return (
-            os.path.exists(resolved_path)
-            and ElfFile.is_elf(resolved_path)
-            and ElfFile(path=resolved_path).arch == self.arch
-        )
+        if not os.path.exists(resolved_path) or not ElfFile.is_elf(resolved_path):
+            return False
+
+        try:
+            elf_file = ElfFile(path=resolved_path)
+        except errors.CorruptedElfFileError as error:
+            # Log if the ELF file seems corrupted.
+            logger.warning(error.get_brief())
+            return False
+
+        return elf_file.arch == self.arch
 
     def _crawl_for_path(self) -> str:
         # Speed things up and return what was already found once.
@@ -209,18 +216,23 @@ class Library:
 
         logger.debug("Crawling to find soname {!r}".format(self.soname))
 
-        if self._is_valid_elf(self.soname_path):
+        valid_search_paths = [p for p in self.search_paths if os.path.exists(p)]
+        in_search_paths = any(
+            self.soname_path.startswith(p) for p in valid_search_paths
+        )
+
+        # Expedite path crawling if we have a valid elf file that lives
+        # inside the search paths.
+        if in_search_paths and self._is_valid_elf(self.soname_path):
             self._update_soname_cache(self.soname_path)
             return self.soname_path
 
-        for path in self.search_paths:
-            if not os.path.exists(path):
-                continue
+        for path in valid_search_paths:
             for root, directories, files in os.walk(path):
                 if self.soname not in files:
                     continue
 
-                file_path = os.path.join(root, self.soname)
+                file_path = os.path.join(root, self.soname.strip("/"))
                 if self._is_valid_elf(file_path):
                     self._update_soname_cache(file_path)
                     return file_path
@@ -273,7 +285,7 @@ class ElfFile:
 
         try:
             self._extract_attributes()
-        except (UnicodeDecodeError, AttributeError) as exception:
+        except (UnicodeDecodeError, AttributeError, ConstructError) as exception:
             raise errors.CorruptedElfFileError(path, exception)
 
     def _extract_attributes(self) -> None:  # noqa: C901
@@ -317,10 +329,7 @@ class ElfFile:
             # If we are processing a detached debug info file, these
             # sections will be present but empty.
             verneed_section = elf.get_section_by_name(_GNU_VERSION_R)
-            if (
-                verneed_section is not None
-                and verneed_section.header.sh_type != "SHT_NOBITS"
-            ):
+            if isinstance(verneed_section, elftools.elf.gnuversions.GNUVerNeedSection):
                 for library, versions in verneed_section.iter_versions():
                     library_name = _ensure_str(library.name)
                     # If the ELF file only references weak symbols
