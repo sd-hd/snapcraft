@@ -7,11 +7,20 @@ on:
       - "v3.9.[0-9]+**"
 
 jobs:
-  my-job:
+  build_and_release:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Configure
+        run: "echo 'Action enabled: ${{ secrets.GITHUB_ACTION_ENABLED }}'"
+        env:
+          action_enabled: ${{ secrets.GITHUB_ACTION_ENABLED }}
+          publish_on_github: ${{ secrets.PUBLISH_GITHUB }}
+          publish_on_snapcraft: ${{ secrets.PUBLISH_SNAPCRAFT_STORE }}
+        
+
       - uses: actions/checkout@v2
+        if: ${{ secrets.GITHUB_ACTION_ENABLED }}
 
       - uses: frabert/replace-string-action@v1.1
         id: git-tag
@@ -22,18 +31,22 @@ jobs:
 
       - uses: jhenstridge/snapcraft-build-action@v1
         id: snapcraft
+        if: ${{ secrets.GITHUB_ACTION_ENABLED }}
 
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1.0.0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # TODO: FIXME: check if this already exist
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ github.ref }}
           release_name: Release ${{ github.ref }}
           draft: false
           prerelease: false
-      - name: Upload Release Asset
+        if: ${{ secrets.GITHUB_ACTION_ENABLED && secrets.PUBLISH_GITHUB }}
+
+
+      - name: Upload Release Asset to github
         id: upload-release-asset 
         uses: actions/upload-release-asset@v1.0.1
         env:
@@ -43,3 +56,13 @@ jobs:
           asset_path: ./${{ steps.snapcraft.outputs.snap }}
           asset_name: ${{ github.workflow }}-${{ steps.git-tag.outputs.replaced }}
           asset_content_type: application/zip
+        if: ${{ secrets.GITHUB_ACTION_ENABLED && secrets.PUBLISH_GITHUB }}
+
+
+      - name: Upload release asset to snapcraft.io
+        uses: jhenstridge/snapcraft-publish-action@master
+        with:
+          store_login: ${{ secrets.STORE_LOGIN }}
+          snap: ${{ steps.snapcraft.outputs.snap }}
+          release: edge
+        if: ${{ secrets.GITHUB_ACTION_ENABLED && secrets.PUBLISH_SNAPCRAFT_STORE }}
